@@ -34,7 +34,19 @@ IFS=',' read -r -a CONTAINERS <<< "${PLUGIN_CONTAINER}"
 for DEPLOY in ${DEPLOYMENTS[@]}; do
   echo Deploying to $KUBERNETES_SERVER
   for CONTAINER in ${CONTAINERS[@]}; do
+
+    # Collect the last revision number so we can track the next one
+    local LAST=$(kubectl -n ${PLUGIN_NAMESPACE} rollout history deployment/${DEPLOY} |grep -v '$^' |tail -n1 | awk '{print $1}')
+
+    # Initiate the rolloout by modifying the image
     kubectl -n ${PLUGIN_NAMESPACE} set image deployment/${DEPLOY} \
       ${CONTAINER}=${PLUGIN_REPO}:${PLUGIN_TAG} --record
+
+    # Wait for the rollout to complete
+    kubectl -n ${PLUGIN_NAMESPACE} rollout status -r $((++LAST)) --watch
+    if [ $? -ne 0  ]; then
+       echo "rollout of [${PLUGIN_NAMESPACE}]:deployment/${DEPLOY}/${CONTAINER} failed"
+       exit 1
+    fi
   done
 done
